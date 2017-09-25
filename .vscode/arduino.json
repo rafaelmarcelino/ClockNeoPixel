@@ -1,0 +1,4 @@
+{
+    "board": "arduino:avr:uno",
+    "sketch": "ClockNeopixelRing_170820_0200\\ClockNeopixelRing_170820_0200.ino"
+}
