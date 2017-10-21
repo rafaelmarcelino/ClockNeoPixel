@@ -1,3 +1,6 @@
+/******************************************************************************************************************************************************************
+***************************************************************************Bibliotecas*****************************************************************************
+*******************************************************************************************************************************************************************/
 //Inclusão de bibliotecas
 #include <ToolsGeneral.h>
 #include <ClocksGeneral.h>
@@ -13,8 +16,6 @@ struct Inputs
   bool changeHour;
   bool changeColor;
   bool changeLuminosity;
-  bool SI_firstScan;
-  bool SI_1s;
 };
 struct Outputs
 {
@@ -26,11 +27,25 @@ struct IOs
   Outputs outputs;
 };
 
+struct Controller_Command
+{
+};
+
+struct Controller_Status
+{
+  bool firstScan;
+  bool _1s;
+  bool Logging;
+  long startCycleTime;
+  long lastCycleTime;
+};
 struct Controller
 {
   ToolsGeneral controlIOs;
   ClocksGeneral controlClocks;
   IOs ios;
+  Controller_Command _command;
+  Controller_Status _status;
 };
 /******************************************************************************************************************************************************************
 ****************************************************************************Constantes*****************************************************************************
@@ -83,15 +98,24 @@ void setup()
 void loop()
 {
   // put your main code here, to run repeatedly:
-  //Atualiza em todos os ciclos
-  updateInAllCicles();
+  //Coleta status das entradas
+  getStateOfInputs();
 
-  //Atualiza o status do anel de leds
+  //Gera o clock para hora, minuto e segundo
+  generateMyClockHour();
+
+  //Atualiza o anel de leds
   updateMyRingLeds(myPixelOfHour, myPixelOfMinute);
 
   /*Rotina que é executada todo scan, porém só é atualizada no primeiro scan.
   OBS:. Sempre deixar esse método como sendo a última tarefa a ser executada pelo controlador.*/
   onlyOnFirstScan();
+
+  //Coleta o valor do ciclo do controlador
+  myController._status.lastCycleTime = myController.controlClocks.getLastCycleTime(myController._status.startCycleTime);
+
+  //Exibe log no serial monitor
+  callLog();
 }
 /******************************************************************************************************************************************************************
 **************************************************************************Métodos Usuário**************************************************************************
@@ -106,14 +130,16 @@ void setDefaultValues()
   Serial.begin(9600);
 
   /*pinsOfInputsOfSystem = {10};
-  pinsOfInputsOfSystem = {11};
-  currentTime = 0;
-  currentTime_OLD = 0;  */
+  pinsOfInputsOfSystem = {11};*/
   actualValueOfSeconds = 0;
   actualValueOfMinutes = 35;
   actualValueOfHours = 23;
   myPixelOfHour = 0;
   myPixelOfMinute = 0;
+
+  //inicializando valores dos tempos de ciclos
+  myController._status.startCycleTime = 0;
+  myController._status.lastCycleTime = 0;
 }
 
 //Configuração dos IOs
@@ -123,32 +149,26 @@ void configMyIOs()
   myController.controlIOs.defThesePinsAsOutputs(pinsOfOutputsOfSystem);*/
 }
 
-//Executa em todos os scans
-void updateInAllCicles()
-{
-  //getStateOfInputs();
-
-  //Gera o clock para hora, minuto e segundo
-  generateMyClockHour();
-
-  //Atualiza o anel de leds
-  updateMyRingLeds(myPixelOfHour,myPixelOfMinute);
-}
-
 //Coleta informação do estado das entradas digitais
 void getStateOfInputs()
 {
+  //Atualiza valor de início de ciclo
+  myController._status.startCycleTime = millis();
+
   /*  myController.ios.inputs.changeSeconds = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[0]);
   myController.ios.inputs.changeMinutes = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[1]);
   myController.ios.inputs.changeHour = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[2]);
   myController.ios.inputs.changeLuminosity = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[3]);
   myController.ios.inputs.changeColor = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[4]);*/
+
+  //Clock de 1 segundo
+  myController._status._1s = myController.controlClocks.getClockInThisTime(BASE_TIME_MS);
 }
 
 //Gera o clock para o relógio
 void generateMyClockHour()
 {
-  if (myController.ios.inputs.SI_1s)
+  if (myController._status._1s)
   {
     //Contando os segundos e o offset de segundos para atualização dos minutos no anel de led
     if (actualValueOfSeconds <= MAX_SECONDS_AND_MINUTES)
@@ -255,7 +275,7 @@ void updateMyRingLeds(int mainPixelHour, int pixelMinutes)
       }
     }
     //Taxa de atualização do anel de led
-    if (myController.ios.inputs.SI_1s)
+    if (myController._status._1s)
     {
       ringPixels.show();
     }
@@ -264,26 +284,36 @@ void updateMyRingLeds(int mainPixelHour, int pixelMinutes)
 //Exibe a hora no monitor Serial
 void showHourInSerialMonitor()
 {
-  Serial.print("Horario atual = ");
-  Serial.print(actualValueOfHours);
-  Serial.print(":");
-  Serial.print(actualValueOfMinutes);
-  Serial.print(":");
-  Serial.println(actualValueOfSeconds);
 }
 
 //Executa apenas no primeiro scan do controlador
 void onlyOnFirstScan()
 {
   //Caso o primeiro scan ainda não foi executado
-  if (!myController.ios.inputs.SI_firstScan)
+  if (!myController._status.firstScan)
   {
     ringPixels.show();
-    showHourInSerialMonitor();
+  }else{
+    return;
   }
-  myController.ios.inputs.SI_firstScan = true;
+  myController._status.firstScan = true;
 }
 
-void testStuffs()
+//Gera mensagens de Log
+void callLog()
 {
+  //Log para o tempo do scan em ms
+  Serial.print("Ultimo scan = ");
+  Serial.println(myController._status.lastCycleTime);
+
+  //Log do horário atual
+  if (myController._status._1s)
+  {
+    Serial.print("Horario atual = ");
+    Serial.print(actualValueOfHours);
+    Serial.print(":");
+    Serial.print(actualValueOfMinutes);
+    Serial.print(":");
+    Serial.println(actualValueOfSeconds);
+  }
 }
