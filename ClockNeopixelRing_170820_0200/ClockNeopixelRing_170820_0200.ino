@@ -11,9 +11,7 @@
 //Definições de estruturas
 struct Inputs
 {
-  bool changeSeconds;
-  bool changeMinutes;
-  bool changeHour;
+  bool changeMinutes_Hours;
   bool changeColor;
   bool changeLuminosity;
 };
@@ -51,6 +49,8 @@ struct Controller
 ****************************************************************************Constantes*****************************************************************************
 *******************************************************************************************************************************************************************/
 //Definições das constantes
+#define TIME_FOR_REQUEST_UPDATE 1000
+
 long BASE_TIME_MS = 1000;
 long MAX_SECONDS_AND_MINUTES = 59;
 long OFFSET_SECONDS_FOR_PIXELS = 150;
@@ -65,21 +65,28 @@ byte BLUE = 255;
 *******************************************************************************************************************************************************************/
 //Definição de variáveis globais
 Controller myController;
-/*int pinsOfInputsOfSystem [];
-int pinsOfOutputsOfSystem [];*/
-long currentTime;
-long currentTime_OLD;
-long actualValueOfSeconds;
-long actualValueOfMinutes;
-long actualValueOfHours;
-long maskForPixelMinutes;
 
-int myPixelOfHour;
-int myPixelOfMinute;
+bool requestTimeChange = false;
+bool updateMinuteRequest = false;
+bool updateHourRequest = false;
+bool activateChangeTime = false;
 
-int testMainPixelHour;
-int testBeforeMainPixelHour;
-int testAfterMainPixelHour;
+int pinsOfInputs[] = {3, 4, 5};
+//int pinsOfOutputsOfSystem [];
+long currentTime = 0;
+long currentTime_OLD = 0;
+long lastTimeRequestTimechanged = 0;
+long actualValueOfSeconds = 0;
+long actualValueOfMinutes = 0;
+long actualValueOfHours = 0;
+long maskForPixelMinutes = 0;
+
+int myPixelOfHour = 0;
+int myPixelOfMinute = 0;
+
+int testMainPixelHour = 0;
+int testBeforeMainPixelHour = 0;
+int testAfterMainPixelHour = 0;
 /******************************************************************************************************************************************************************
 ******************************************************************************Objetos******************************************************************************
 *******************************************************************************************************************************************************************/
@@ -91,7 +98,7 @@ Adafruit_NeoPixel ringPixels = Adafruit_NeoPixel(NUMBER_OF_PIXELS, PIN_NEOPIXEL,
 void setup()
 {
   // put your setup code here, to run once:
-  //configMyIOs();
+  configMyIOs();
   setDefaultValues();
 }
 
@@ -100,6 +107,9 @@ void loop()
   // put your main code here, to run repeatedly:
   //Coleta status das entradas
   getStateOfInputs();
+
+  //Verifica se existe solicitação para alteração de horário
+  checkUpdateOnTime();
 
   //Gera o clock para hora, minuto e segundo
   generateMyClockHour();
@@ -115,7 +125,7 @@ void loop()
   myController._status.lastCycleTime = myController.controlClocks.getLastCycleTime(myController._status.startCycleTime);
 
   //Exibe log no serial monitor
-  callLog();
+  //callLog();
 }
 /******************************************************************************************************************************************************************
 **************************************************************************Métodos Usuário**************************************************************************
@@ -129,8 +139,6 @@ void setDefaultValues()
   //Incializando comunicação Serial
   Serial.begin(9600);
 
-  /*pinsOfInputsOfSystem = {10};
-  pinsOfInputsOfSystem = {11};*/
   actualValueOfSeconds = 0;
   actualValueOfMinutes = 35;
   actualValueOfHours = 23;
@@ -145,8 +153,8 @@ void setDefaultValues()
 //Configuração dos IOs
 void configMyIOs()
 {
-  /* myController.controlIOs.defThesePinsAsInputs(pinsOfInputsOfSystem);
-  myController.controlIOs.defThesePinsAsOutputs(pinsOfOutputsOfSystem);*/
+  myController.controlIOs.defThesePinsAsInputs(pinsOfInputs);
+  //myController.controlIOs.defThesePinsAsOutputs(pinsOfOutputsOfSystem);*/
 }
 
 //Coleta informação do estado das entradas digitais
@@ -155,16 +163,55 @@ void getStateOfInputs()
   //Atualiza valor de início de ciclo
   myController._status.startCycleTime = millis();
 
-  /*  myController.ios.inputs.changeSeconds = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[0]);
-  myController.ios.inputs.changeMinutes = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[1]);
-  myController.ios.inputs.changeHour = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[2]);
-  myController.ios.inputs.changeLuminosity = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[3]);
-  myController.ios.inputs.changeColor = myController.controlIOs.getStatusInput(pinsOfInputsOfSystem[4]);*/
+  //Coleta valores das entrada físicas do sistema
+  myController.ios.inputs.changeMinutes_Hours = myController.controlIOs.getStatusInput(pinsOfInputs[0]);
+  myController.ios.inputs.changeColor = myController.controlIOs.getStatusInput(pinsOfInputs[1]);
+  myController.ios.inputs.changeLuminosity = myController.controlIOs.getStatusInput(pinsOfInputs[2]);
 
   //Clock de 1 segundo
   myController._status._1s = myController.controlClocks.getClockInThisTime(BASE_TIME_MS);
 }
 
+//Verifica se existe solicitação para alterar o horário
+void checkUpdateOnTime()
+{
+  requestTimeChange = myController.controlIOs.activateAfter(myController.ios.inputs.changeMinutes_Hours, TIME_FOR_REQUEST_UPDATE);
+  //Reseta a ativação de mudança de horário
+  if (myController.controlIOs.oneShotRisingEdge(!myController.ios.inputs.changeMinutes_Hours))
+  {
+    activateChangeTime = false;
+    lastTimeRequestTimechanged = millis();
+  }
+
+  //Define solicitação de alteração do horário. MINUTOS
+  if (requestTimeChange && !updateMinuteRequest && !activateChangeTime)
+  {
+    updateMinuteRequest = true;
+    activateChangeTime = true;
+    updateHourRequest = false;
+    Serial.println("Mudanca de minutos ativa");
+  }
+
+  //Define solicitação de alteração do horário. HORAS
+  if (requestTimeChange && (updateMinuteRequest && !activateChangeTime))
+  {
+    updateMinuteRequest = false;
+    updateHourRequest = true;
+    activateChangeTime = true;
+    Serial.println("Mudanca de horas ativa");
+  }
+
+  //Retira a solicitação de alteração
+  if (!requestTimeChange &&
+      (millis() >= lastTimeRequestTimechanged + TIME_FOR_REQUEST_UPDATE*2) &&
+      (updateMinuteRequest || updateHourRequest))
+  {
+    updateMinuteRequest = false;
+    updateHourRequest = false;
+    activateChangeTime = false;
+    Serial.println("Mudanca de horario cancelada");
+  }
+}
 //Gera o clock para o relógio
 void generateMyClockHour()
 {
@@ -293,7 +340,9 @@ void onlyOnFirstScan()
   if (!myController._status.firstScan)
   {
     ringPixels.show();
-  }else{
+  }
+  else
+  {
     return;
   }
   myController._status.firstScan = true;
@@ -317,3 +366,5 @@ void callLog()
     Serial.println(actualValueOfSeconds);
   }
 }
+
+
