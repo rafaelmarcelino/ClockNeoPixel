@@ -2,7 +2,9 @@
 ***************************************************************************Bibliotecas*****************************************************************************
 *******************************************************************************************************************************************************************/
 //Inclusão de bibliotecas
-#include <ToolsGeneral.h>
+#include <IOHandler.h>
+#include <OneShot.h>
+#include<TimerOn.h>
 #include <ClocksGeneral.h>
 #include <Adafruit_NeoPixel.h>
 /******************************************************************************************************************************************************************
@@ -39,9 +41,11 @@ struct Controller_Status
 };
 struct Controller
 {
-  ToolsGeneral controlIOs;
+  IOHandler controlIOs;
   ClocksGeneral controlClocks;
   IOs ios;
+  OneShot oneShots[10];
+  TimerOn timersOn[10];
   Controller_Command _command;
   Controller_Status _status;
 };
@@ -175,9 +179,9 @@ void getStateOfInputs()
 //Verifica se existe solicitação para alterar o horário
 void checkUpdateOnTime()
 {
-  requestTimeChange = myController.controlIOs.activateAfter(myController.ios.inputs.changeMinutes_Hours, TIME_FOR_REQUEST_UPDATE);
+  requestTimeChange = myController.timersOn[0].outputTimerOn(myController.ios.inputs.changeMinutes_Hours, TIME_FOR_REQUEST_UPDATE);
   //Reseta a ativação de mudança de horário
-  if (myController.controlIOs.oneShotRisingEdge(!myController.ios.inputs.changeMinutes_Hours))
+  if (myController.oneShots[0].oneShotRisingEdge(!myController.ios.inputs.changeMinutes_Hours))
   {
     activateChangeTime = false;
     lastTimeRequestTimechanged = millis();
